@@ -1,0 +1,16 @@
+{
+  "name": "lottery",
+  "description": "Analyzing lottery results",
+  "version": "1.0.0",
+  "author": "Geison Oriani",
+  "license": "MIT",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsc -p tsconfig.json && node dist/index.js"
+  },
+  "keywords": [],
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.5.4"
+  }
+}
