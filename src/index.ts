@@ -1,115 +1,197 @@
 import fs from 'node:fs'
 import results from '../data/results.json'
 
+// Types
+interface LotteryResult {
+  id: string
+  date: string
+  drawnNumbers: number[]
+}
+
+interface NumberData {
+  number: number
+  count: number
+}
+
+// Constants
 const MAX_NUMBERS = 60
 const QUANTITY = 6
 
-// Função para ordenar os dados
-const raw = Array(MAX_NUMBERS + 1).fill(0)
+// Helper functions
+function extractLabelsAndCounts(data: NumberData[]) {
+  const counts = []
+  const labels = []
 
-let numberOfResults = 0
-let oldestResult: Date | null = null
-let newestResult: Date | null = null
+  for (const item of data) {
+    counts.push(item.count)
+    labels.push(item.number)
+  }
 
-// Count the number of times each number was drawn
-for (const result of results) {
-  const date = new Date(result.date)
-  oldestResult ??= date
-  newestResult ??= date
-
-  if (date < oldestResult)
-    oldestResult = date
-  if (date > newestResult)
-    newestResult = date
-
-  numberOfResults++
-
-  // Iterate over the drawn numbers
-  for (const drawnNumber of result.drawnNumbers)
-    // Check if the number is valid
-    if (drawnNumber >= 1 && drawnNumber <= MAX_NUMBERS)
-      raw[drawnNumber]++
+  return {
+    counts,
+    labels,
+  }
 }
 
-// Build the data
-const data = raw
-  // Remove the first element (index 0) because it's not a valid number
+function processResults(lotteryResults: LotteryResult[]) {
+  const frequencies = new Array(MAX_NUMBERS + 1).fill(0)
+  let count = 0
+  let oldest: Date | null = null
+  let newest: Date | null = null
+
+  for (const result of lotteryResults) {
+    const date = new Date(result.date)
+
+    if (!isNaN(date.getTime())) {
+      oldest ??= date
+      newest ??= date
+      if (date < oldest) oldest = date
+      if (date > newest) newest = date
+    }
+
+    count++
+
+    for (const number of result.drawnNumbers) {
+      if (number >= 1 && number <= MAX_NUMBERS) {
+        frequencies[number]++
+      }
+    }
+  }
+
+  return { frequencies, count, oldest, newest }
+}
+
+const {
+  frequencies,
+  count: numberOfResults,
+  oldest: oldestResult,
+  newest: newestResult
+} = processResults(results as LotteryResult[])
+
+// Build number frequency data
+const data: NumberData[] = frequencies
   .slice(1)
-  // Map the data to an object with the number and the count
   .map((count, index) => ({
     number: index + 1,
-    count
+    count,
   }))
 
-// Distribution Number
-const distributionByNumber = data.toSorted((a, b) => a.number - b.number)
-const distributionCountsByNumber = distributionByNumber.map(({ count }) => count)
-const distributionLabelsByNumber = distributionByNumber.map(({ number }) => number)
+// Sort helpers
+const sortByNumber = (a: NumberData, b: NumberData) => a.number - b.number
+const sortByCount = (a: NumberData, b: NumberData) => a.count - b.count
+const sortByCountDesc = (a: NumberData, b: NumberData) => b.count - a.count
 
-// Distribution Occurrence
-const distributionByOccurrence = data.toSorted((a, b) => a.count - b.count)
-const distributionCountsByOccurrence = distributionByOccurrence.map(({ count }) => count)
-const distributionLabelsByOccurrence = distributionByOccurrence.map(({ number }) => number)
+// Distribution data
+const distributionByNumber = data.toSorted(sortByNumber)
+const {
+  labels: distributionLabelsByNumber,
+  counts: distributionCountsByNumber
+} = extractLabelsAndCounts(distributionByNumber)
 
-// Forecast Min Number
-const forecastByNumberMin = data
-  .toSorted((a, b) => a.count - b.count)
-  .slice(0, QUANTITY)
-  .toSorted((a, b) => a.number - b.number)
-const forecastCountsByNumberMin = forecastByNumberMin.map(({ count }) => count)
-const foracastLabelsByNumberMin = forecastByNumberMin.map(({ number }) => number)
+const distributionByOccurrence = data.toSorted(sortByCount)
+const {
+  labels: distributionLabelsByOccurrence,
+  counts: distributionCountsByOccurrence
+} = extractLabelsAndCounts(distributionByOccurrence)
 
-// Forecast Min Occurrence
-const forecastByOccurrenceMin = data
-  .toSorted((a, b) => a.count - b.count)
-  .slice(0, QUANTITY)
-const forecastCountsByOccurrenceMin = forecastByOccurrenceMin.map(({ count }) => count)
-const forecastLabelsByOccurrenceMin = forecastByOccurrenceMin.map(({ number }) => number)
+// Forecast data
+const leastFrequent = data.toSorted(sortByCount).slice(0, QUANTITY)
+const forecastByNumberMin = leastFrequent.toSorted(sortByNumber)
+const {
+  labels: forecastLabelsByNumberMin,
+  counts: forecastCountsByNumberMin
+} = extractLabelsAndCounts(forecastByNumberMin)
+const {
+  labels: forecastLabelsByOccurrenceMin,
+  counts: forecastCountsByOccurrenceMin
+} = extractLabelsAndCounts(leastFrequent)
 
-// Forecast Max Number
-const forecastByNumberMax = data
-  .toSorted((a, b) => a.count - b.count)
-  .slice(-QUANTITY)
-  .toSorted((a, b) => a.number - b.number)
-const forecastCountsByNumberMax = forecastByNumberMax.map(({ count }) => count)
-const forecastLabelsByNumberMax = forecastByNumberMax.map(({ number }) => number)
-
-// Forecast Max Occurrence
-const forecastByOccurrenceMax = data
-  .toSorted((a, b) => a.count - b.count)
-  .slice(-QUANTITY)
-const forecastCountsByOccurrenceMax = forecastByOccurrenceMax.map(({ count }) => count)
-const forecastLabelsByOccurrenceMax = forecastByOccurrenceMax.map(({ number }) => number)
+const mostFrequent = data.toSorted(sortByCount).slice(-QUANTITY)
+const forecastByNumberMax = mostFrequent.toSorted(sortByNumber)
+const {
+  labels: forecastLabelsByNumberMax,
+  counts: forecastCountsByNumberMax
+} = extractLabelsAndCounts(forecastByNumberMax)
+const {
+  labels: forecastLabelsByOccurrenceMax,
+  counts: forecastCountsByOccurrenceMax
+} = extractLabelsAndCounts(mostFrequent)
 
 // Number Suggestion Strategies
+function calculateNumberScore(item: NumberData, avgCount: number): number {
+  // Score based on multiple factors:
+  // 1. Frequency relative to average (40%)
+  const frequencyScore = (item.count / avgCount) * 0.4
+
+  // 2. Avoid extremes - prefer numbers near average (30%)
+  const deviation = Math.abs(item.count - avgCount) / avgCount
+  const balanceScore = (1 - deviation) * 0.3
+
+  // 3. Position diversity - prefer spread across number range (30%)
+  const positionScore = Math.sin((item.number / MAX_NUMBERS) * Math.PI) * 0.3
+
+  return frequencyScore + balanceScore + positionScore
+}
+
+function generateBestNumbers(): number[] {
+  const avgCount = data.reduce((sum, d) => sum + d.count, 0) / data.length
+
+  // Calculate score for each number
+  const scored = data.map(item => ({
+    number: item.number,
+    score: calculateNumberScore(item, avgCount)
+  }))
+
+  // Select top QUANTITY numbers by score, ensuring good distribution
+  const selected: number[] = []
+  const sortedByScore = scored.toSorted((a, b) => b.score - a.score)
+
+  for (const item of sortedByScore) {
+    // Avoid numbers too close to already selected ones
+    const tooClose = selected.some(n => Math.abs(n - item.number) <= 3)
+    if (!tooClose || selected.length >= QUANTITY - 1) {
+      selected.push(item.number)
+      if (selected.length === QUANTITY) break
+    }
+  }
+
+  // Fill remaining slots if needed
+  if (selected.length < QUANTITY) {
+    for (const item of sortedByScore) {
+      if (!selected.includes(item.number)) {
+        selected.push(item.number)
+        if (selected.length === QUANTITY) break
+      }
+    }
+  }
+
+  return selected.sort((a, b) => a - b)
+}
+
 function generateBalancedNumbers(): number[] {
-  // Mix of hot (high frequency) and cold (low frequency) numbers
-  const sorted = data.toSorted((a, b) => b.count - a.count)
+  const sorted = data.toSorted(sortByCountDesc)
   const hot = sorted.slice(0, 3).map(d => d.number)
   const cold = sorted.slice(-3).map(d => d.number)
   return [...hot, ...cold].sort((a, b) => a - b)
 }
 
 function generateHotNumbers(): number[] {
-  // Pick the most frequently drawn numbers
   return data
-    .toSorted((a, b) => b.count - a.count)
+    .toSorted(sortByCountDesc)
     .slice(0, QUANTITY)
     .map(d => d.number)
     .sort((a, b) => a - b)
 }
 
 function generateColdNumbers(): number[] {
-  // Pick the least frequently drawn numbers
   return data
-    .toSorted((a, b) => a.count - b.count)
+    .toSorted(sortByCount)
     .slice(0, QUANTITY)
     .map(d => d.number)
     .sort((a, b) => a - b)
 }
 
 function generateWeightedRandom(): number[] {
-  // Weighted random based on frequency
   const totalCount = data.reduce((sum, d) => sum + d.count, 0)
   const selected = new Set<number>()
 
@@ -128,7 +210,6 @@ function generateWeightedRandom(): number[] {
 }
 
 function generateTrulyRandom(): number[] {
-  // Pure random selection
   const available = Array.from({ length: MAX_NUMBERS }, (_, i) => i + 1)
   const selected: number[] = []
 
@@ -143,6 +224,7 @@ function generateTrulyRandom(): number[] {
 
 // Generate suggestions
 const suggestions = {
+  best: generateBestNumbers(),
   balanced: generateBalancedNumbers(),
   hot: generateHotNumbers(),
   cold: generateColdNumbers(),
@@ -254,6 +336,11 @@ fs.writeFileSync('distribution.html', `
     <h2>Sugestões de Números para Jogar</h2>
     <div class="container">
       <div class="suggestions">
+        <div class="suggestion-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+          <h3>⭐ Melhor Sugestão</h3>
+          <p class="suggestion-desc">Análise estatística completa com distribuição otimizada</p>
+          <div class="numbers">${suggestions.best.map(n => `<span class="number">${n}</span>`).join('')}</div>
+        </div>
         <div class="suggestion-card">
           <h3>🎯 Balanceado</h3>
           <p class="suggestion-desc">3 mais sorteados + 3 menos sorteados</p>
@@ -347,7 +434,7 @@ fs.writeFileSync('distribution.html', `
             dataset.title = 'Todos, Ordenado por Ocorrência'
             break;
           case 'number-min':
-            dataset.labels = ${JSON.stringify(foracastLabelsByNumberMin)}
+            dataset.labels = ${JSON.stringify(forecastLabelsByNumberMin)}
             dataset.data = ${JSON.stringify(forecastCountsByNumberMin)}
             dataset.color = 'rgba(54, 162, 235, 0.6)'
             dataset.title = 'Menores Frequências, Ordenado por Número'
