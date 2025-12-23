@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import results from './results.json'
+import results from '../data/results.json'
 
 const MAX_NUMBERS = 60
 const QUANTITY = 6

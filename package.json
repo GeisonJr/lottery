@@ -6,11 +6,13 @@
   "license": "MIT",
   "main": "index.js",
   "scripts": {
-    "start": "tsc -p tsconfig.json && node dist/index.js"
+    "start": "tsc -p tsconfig.json && node dist/src/index.js",
+    "json": "tsc -p tsconfig.json && node dist/src/json.js"
   },
   "keywords": [],
   "devDependencies": {
     "@types/node": "^22.10.2",
     "typescript": "^5.5.4"
-  }
+  },
+  "packageManager": "pnpm@9.15.0"
 }
