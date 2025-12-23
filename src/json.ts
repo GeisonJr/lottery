@@ -1,43 +1,46 @@
-import * as fs from 'node:fs'
-import * as path from 'node:path'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
-const filePath = path.join(__dirname, '..', 'data', 'results.txt')
+interface LotteryResult {
+  id: string
+  date: string
+  drawnNumbers: number[]
+}
 
-fs.readFile(filePath, 'utf8', (err, data) => {
-  if (err) {
-    console.error('Error reading file:', err)
-    return
+function parseLine(line: string): LotteryResult {
+  const [id, date, ball1, ball2, ball3, ball4, ball5, ball6] = line.split(/\s+/)
+
+  return {
+    id: id.trim(),
+    date: date.trim().split('/').reverse().join('-') + 'T00:00:00.000Z',
+    drawnNumbers: [
+      Number.parseInt(ball1.trim(), 10),
+      Number.parseInt(ball2.trim(), 10),
+      Number.parseInt(ball3.trim(), 10),
+      Number.parseInt(ball4.trim(), 10),
+      Number.parseInt(ball5.trim(), 10),
+      Number.parseInt(ball6.trim(), 10),
+    ],
   }
+}
 
-  const lines = data
-    .split('\n')
-    .filter(line => line.trim() !== '')
+async function convertTextToJson(): Promise<void> {
+  try {
+    const filePath = join(__dirname, '..', 'data', 'results.txt')
+    const data = await readFile(filePath, 'utf8')
 
-  const results = lines
-    .map(line => {
-      // \t or space
-      const [id, date, ball1, ball2, ball3, ball4, ball5, ball6] = line.split(/\s+/)
+    const lines = data.split('\n').filter(line => line.trim() !== '')
+    const results = lines.map(parseLine)
 
-      return {
-        id: id.trim(),
-        date: date.trim().split('/').reverse().join('-') + 'T00:00:00.000Z',
-        drawnNumbers: [
-          parseInt(ball1.trim(), 10),
-          parseInt(ball2.trim(), 10),
-          parseInt(ball3.trim(), 10),
-          parseInt(ball4.trim(), 10),
-          parseInt(ball5.trim(), 10),
-          parseInt(ball6.trim(), 10)
-        ]
-      }
-    })
+    const jsonFilePath = join(__dirname, '..', 'data', `results-${Date.now()}.json`)
+    await writeFile(jsonFilePath, JSON.stringify(results, null, 2), 'utf8')
 
-  const jsonFilePath = path.join(__dirname, '..', 'data', `results-${Date.now()}.json`)
-  fs.writeFile(jsonFilePath, JSON.stringify(results, null, 2), 'utf8', (err) => {
-    if (err) {
-      console.error('Error writing JSON file:', err)
-      return
-    }
-    console.log('JSON file has been saved.')
-  })
-})
+    console.log(`✅ JSON file saved: ${jsonFilePath}`)
+    console.log(`📊 Total results: ${results.length}`)
+  } catch (err) {
+    console.error('❌ Error:', err)
+    process.exit(1)
+  }
+}
+
+convertTextToJson()
